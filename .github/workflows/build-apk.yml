@@ -23,41 +23,51 @@ jobs:
       - name: Descompactar ZIP do sistema
         run: |
           mkdir -p projeto_apk
+          mkdir -p artefatos
+
           ZIP_ARQUIVO=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP_ARQUIVO" ]; then
-            echo "ERRO: nenhum arquivo ZIP encontrado na raiz do repositório."
+            echo "ERRO: nenhum arquivo ZIP encontrado na raiz do repositório." | tee artefatos/erro.txt
             exit 1
           fi
 
-          echo "ZIP encontrado: $ZIP_ARQUIVO"
+          echo "ZIP encontrado: $ZIP_ARQUIVO" | tee artefatos/zip_encontrado.txt
           unzip -o "$ZIP_ARQUIVO" -d projeto_apk
 
-          echo "Arquivos extraídos:"
-          find projeto_apk -maxdepth 5 -type f | head -100
+          echo "Arquivos extraídos:" | tee artefatos/arquivos_extraidos.txt
+          find projeto_apk -maxdepth 6 -type f | tee -a artefatos/arquivos_extraidos.txt
 
       - name: Localizar buildozer.spec
         run: |
+          mkdir -p artefatos
+
           BUILD_DIR=$(find projeto_apk -name "buildozer.spec" -exec dirname {} \; | head -n 1)
 
           if [ -z "$BUILD_DIR" ]; then
-            echo "ERRO: buildozer.spec não encontrado dentro do ZIP."
-            find projeto_apk -maxdepth 5 -type f
+            echo "ERRO: buildozer.spec não encontrado dentro do ZIP." | tee artefatos/erro_buildozer_spec.txt
+            find projeto_apk -maxdepth 6 -type f | tee -a artefatos/erro_buildozer_spec.txt
             exit 1
           fi
 
           echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "$BUILD_DIR" > artefatos/build_dir.txt
           echo "buildozer.spec encontrado em: $BUILD_DIR"
 
       - name: Conferir estrutura do projeto
         run: |
+          mkdir -p artefatos
+
           cd "$BUILD_DIR"
-          echo "Pasta atual:"
-          pwd
-          echo "Arquivos encontrados:"
-          ls -la
-          echo "Conteúdo inicial do buildozer.spec:"
-          sed -n '1,120p' buildozer.spec
+
+          echo "Pasta atual:" | tee ../../artefatos/estrutura.txt
+          pwd | tee -a ../../artefatos/estrutura.txt
+
+          echo "Arquivos encontrados:" | tee -a ../../artefatos/estrutura.txt
+          ls -la | tee -a ../../artefatos/estrutura.txt
+
+          echo "Conteúdo do buildozer.spec:" | tee ../../artefatos/buildozer_spec.txt
+          cat buildozer.spec | tee -a ../../artefatos/buildozer_spec.txt
 
       - name: Instalar Buildozer
         run: |
@@ -66,78 +76,35 @@ jobs:
 
       - name: Gerar APK com log completo
         run: |
+          mkdir -p artefatos
+
           cd "$BUILD_DIR"
-          set -o pipefail
-          buildozer -v android debug 2>&1 | tee buildozer_build.log
 
-      - name: Enviar APK e logs como artefato
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SISTEMA-EXPRESS-APK-E-LOGS
-          path: |
-            projeto_apk/**/bin/*.apk
-            projeto_apk/**/buildozer_build.log
-            projeto_apk/**/.buildozer/**/*.log
-            projeto_apk/**/buildozer.spec
-          include-hidden-files: true          find projeto_apk -maxdepth 5 -type f | head -100
+          set +e
+          buildozer -v android debug 2>&1 | tee ../../artefatos/buildozer_build.log
+          CODIGO_SAIDA=${PIPESTATUS[0]}
+          echo "$CODIGO_SAIDA" > ../../artefatos/codigo_saida_buildozer.txt
 
-      - name: Localizar buildozer.spec
-        run: |
-          BUILD_DIR=$(find projeto_apk -name "buildozer.spec" -exec dirname {} \; | head -n 1)
+          echo "Código de saída do Buildozer: $CODIGO_SAIDA"
 
-          if [ -z "$BUILD_DIR" ]; then
-            echo "ERRO: buildozer.spec não encontrado dentro do ZIP."
-            find projeto_apk -maxdepth 5 -type f
-            exit 1
+          mkdir -p ../../artefatos/apk
+          mkdir -p ../../artefatos/logs_buildozer
+
+          if ls bin/*.apk 1> /dev/null 2>&1; then
+            cp bin/*.apk ../../artefatos/apk/
           fi
 
-          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
-          echo "buildozer.spec encontrado em: $BUILD_DIR"
+          if [ -d ".buildozer" ]; then
+            find .buildozer -name "*.log" -exec cp --parents {} ../../artefatos/logs_buildozer/ \;
+          fi
 
-      - name: Conferir arquivos principais
-        run: |
-          cd "$BUILD_DIR"
-          echo "Pasta atual:"
-          pwd
-          echo "Arquivos:"
-          ls -la
-          echo "Conteúdo inicial do buildozer.spec:"
-          sed -n '1,80p' buildozer.spec
+          cp buildozer.spec ../../artefatos/buildozer.spec || true
 
-      - name: Instalar Buildozer
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
-
-      - name: Gerar APK com log completo
-        run: |
-          cd "$BUILD_DIR"
-          buildozer -v android debug
+          exit $CODIGO_SAIDA
 
       - name: Enviar APK e logs como artefato
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: SISTEMA-EXPRESS-APK-E-LOGS
-          path: |
-            ${{ env.BUILD_DIR }}/bin/*.apk
-            ${{ env.BUILD_DIR }}/.buildozer/**/*.log
-            ${{ env.BUILD_DIR }}/buildozer.spec          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
-          echo "buildozer.spec encontrado em: $BUILD_DIR"
-
-      - name: Instalar Buildozer
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
-
-      - name: Gerar APK
-        run: |
-          cd "$BUILD_DIR"
-          buildozer android debug
-
-      - name: Enviar APK como artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: SISTEMA-EXPRESS-APK
-          path: ${{ env.BUILD_DIR }}/bin/*.apk
+          path: artefatos/
