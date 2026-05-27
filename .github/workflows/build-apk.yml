@@ -49,6 +49,52 @@ jobs:
           echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
           echo "buildozer.spec encontrado em: $BUILD_DIR"
 
+      - name: Conferir estrutura do projeto
+        run: |
+          cd "$BUILD_DIR"
+          echo "Pasta atual:"
+          pwd
+          echo "Arquivos encontrados:"
+          ls -la
+          echo "Conteúdo inicial do buildozer.spec:"
+          sed -n '1,120p' buildozer.spec
+
+      - name: Instalar Buildozer
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
+
+      - name: Gerar APK com log completo
+        run: |
+          cd "$BUILD_DIR"
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee buildozer_build.log
+
+      - name: Enviar APK e logs como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SISTEMA-EXPRESS-APK-E-LOGS
+          path: |
+            projeto_apk/**/bin/*.apk
+            projeto_apk/**/buildozer_build.log
+            projeto_apk/**/.buildozer/**/*.log
+            projeto_apk/**/buildozer.spec
+          include-hidden-files: true          find projeto_apk -maxdepth 5 -type f | head -100
+
+      - name: Localizar buildozer.spec
+        run: |
+          BUILD_DIR=$(find projeto_apk -name "buildozer.spec" -exec dirname {} \; | head -n 1)
+
+          if [ -z "$BUILD_DIR" ]; then
+            echo "ERRO: buildozer.spec não encontrado dentro do ZIP."
+            find projeto_apk -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "buildozer.spec encontrado em: $BUILD_DIR"
+
       - name: Conferir arquivos principais
         run: |
           cd "$BUILD_DIR"
