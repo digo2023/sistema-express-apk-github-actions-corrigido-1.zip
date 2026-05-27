@@ -20,6 +20,23 @@ jobs:
           sudo apt update
           sudo apt install -y python3 python3-pip python3-setuptools python3-wheel git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
 
+      - name: Descompactar sistema
+        run: |
+          mkdir -p projeto_apk
+          unzip -o *.zip -d projeto_apk
+          echo "Arquivos extraídos:"
+          find projeto_apk -maxdepth 3 -type f | head -50
+
+      - name: Localizar buildozer.spec
+        run: |
+          BUILD_DIR=$(find projeto_apk -name "buildozer.spec" -exec dirname {} \; | head -n 1)
+          if [ -z "$BUILD_DIR" ]; then
+            echo "ERRO: buildozer.spec não encontrado dentro do ZIP."
+            exit 1
+          fi
+          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "buildozer.spec encontrado em: $BUILD_DIR"
+
       - name: Instalar Buildozer
         run: |
           python3 -m pip install --upgrade pip
@@ -27,10 +44,11 @@ jobs:
 
       - name: Gerar APK
         run: |
+          cd "$BUILD_DIR"
           buildozer android debug
 
       - name: Enviar APK como artefato
         uses: actions/upload-artifact@v4
         with:
           name: SISTEMA-EXPRESS-APK
-          path: bin/*.apk
+          path: ${{ env.BUILD_DIR }}/bin/*.apk
