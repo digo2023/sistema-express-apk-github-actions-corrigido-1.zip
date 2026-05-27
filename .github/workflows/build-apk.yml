@@ -1,4 +1,4 @@
-name: Gerar APK Android
+name: APKs para Android
 
 on:
   workflow_dispatch:
@@ -20,21 +20,64 @@ jobs:
           sudo apt update
           sudo apt install -y python3 python3-pip python3-setuptools python3-wheel git zip unzip openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
 
-      - name: Descompactar sistema
+      - name: Descompactar ZIP do sistema
         run: |
           mkdir -p projeto_apk
-          unzip -o *.zip -d projeto_apk
+          ZIP_ARQUIVO=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_ARQUIVO" ]; then
+            echo "ERRO: nenhum arquivo ZIP encontrado na raiz do repositório."
+            exit 1
+          fi
+
+          echo "ZIP encontrado: $ZIP_ARQUIVO"
+          unzip -o "$ZIP_ARQUIVO" -d projeto_apk
+
           echo "Arquivos extraídos:"
-          find projeto_apk -maxdepth 3 -type f | head -50
+          find projeto_apk -maxdepth 5 -type f | head -100
 
       - name: Localizar buildozer.spec
         run: |
           BUILD_DIR=$(find projeto_apk -name "buildozer.spec" -exec dirname {} \; | head -n 1)
+
           if [ -z "$BUILD_DIR" ]; then
             echo "ERRO: buildozer.spec não encontrado dentro do ZIP."
+            find projeto_apk -maxdepth 5 -type f
             exit 1
           fi
+
           echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+          echo "buildozer.spec encontrado em: $BUILD_DIR"
+
+      - name: Conferir arquivos principais
+        run: |
+          cd "$BUILD_DIR"
+          echo "Pasta atual:"
+          pwd
+          echo "Arquivos:"
+          ls -la
+          echo "Conteúdo inicial do buildozer.spec:"
+          sed -n '1,80p' buildozer.spec
+
+      - name: Instalar Buildozer
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
+
+      - name: Gerar APK com log completo
+        run: |
+          cd "$BUILD_DIR"
+          buildozer -v android debug
+
+      - name: Enviar APK e logs como artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SISTEMA-EXPRESS-APK-E-LOGS
+          path: |
+            ${{ env.BUILD_DIR }}/bin/*.apk
+            ${{ env.BUILD_DIR }}/.buildozer/**/*.log
+            ${{ env.BUILD_DIR }}/buildozer.spec          echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
           echo "buildozer.spec encontrado em: $BUILD_DIR"
 
       - name: Instalar Buildozer
